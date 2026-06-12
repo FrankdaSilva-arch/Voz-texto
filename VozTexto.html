@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="VozTexto">
+<title>VozTexto — Transcrição com IA</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --purple: #7F77DD;
+    --purple-light: #EEEDFE;
+    --purple-dark: #534AB7;
+    --red: #E24B4A;
+    --red-light: #FCEBEB;
+    --green: #639922;
+    --green-light: #EAF3DE;
+    --green-dark: #3B6D11;
+    --amber-light: #FAEEDA;
+    --amber-dark: #854F0B;
+    --amber-border: #FAC775;
+    --blue-light: #E6F1FB;
+    --blue-dark: #185FA5;
+    --blue-border: #85B7EB;
+    --gray: #888780;
+    --bg: #F2F2F7;
+    --surface: #FFFFFF;
+    --text: #1C1C1E;
+    --text-muted: #6C6C70;
+    --text-hint: #AEAEB2;
+    --border: rgba(0,0,0,0.12);
+    --radius: 14px;
+    --radius-sm: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1C1C1E;
+      --surface: #2C2C2E;
+      --text: #FFFFFF;
+      --text-muted: #AEAEB2;
+      --text-hint: #6C6C70;
+      --border: rgba(255,255,255,0.12);
+      --purple-light: #2D2B54;
+      --red-light: #3A1A1A;
+      --green-light: #1A2A0A;
+      --amber-light: #2A1E0A;
+      --blue-light: #0A1E2A;
+    }
+  }
+
+  html, body { height: 100%; font-family: -apple-system, 'SF Pro Text', sans-serif; background: var(--bg); color: var(--text); }
+
+  .app { max-width: 430px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header {
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    padding: env(safe-area-inset-top, 12px) 20px 14px;
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .header-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--purple); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .header-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .header-text h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .header-text p { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+  /* Scroll area */
+  .scroll { flex: 1; overflow-y: auto; padding: 16px 16px env(safe-area-inset-bottom, 16px); }
+
+  /* Record card */
+  .record-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 24px 20px 20px;
+    margin-bottom: 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+
+  /* Waveform */
+  .waveform { width: 100%; height: 60px; display: flex; align-items: center; justify-content: center; gap: 3px; }
+  .bar { width: 3px; border-radius: 3px; background: var(--border); transition: height 0.08s ease; }
+  .bar.active { background: var(--purple); }
+
+  /* Timer */
+  .timer { font-size: 34px; font-weight: 300; letter-spacing: 3px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .timer.rec { color: var(--red); }
+
+  /* Controls */
+  .controls { display: flex; align-items: center; justify-content: center; gap: 24px; }
+  .btn-record {
+    width: 76px; height: 76px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--purple); display: flex; align-items: center; justify-content: center;
+    transition: transform 0.12s, background 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-record:active { transform: scale(0.91); }
+  .btn-record.rec { background: var(--red); }
+  .btn-record svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .btn-round {
+    width: 52px; height: 52px; border-radius: 50%; border: 0.5px solid var(--border);
+    background: var(--bg); color: var(--text-muted); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: background 0.12s, transform 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-round:active { transform: scale(0.91); }
+  .btn-round:disabled { opacity: 0.3; pointer-events: none; }
+  .btn-round svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Status badge */
+  .badge {
+    display: inline-block; padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; background: var(--bg); color: var(--text-muted); border: 0.5px solid var(--border);
+  }
+  .badge.rec { background: var(--purple-light); color: var(--purple-dark); border-color: var(--purple); }
+  .badge.processing { background: var(--amber-light); color: var(--amber-dark); border-color: var(--amber-border); }
+  .badge.done { background: var(--green-light); color: var(--green-dark); border-color: var(--green); }
+
+  /* iOS hint */
+  .hint {
+    background: var(--blue-light); border: 0.5px solid var(--blue-border);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+    font-size: 12px; color: var(--blue-dark); line-height: 1.5;
+    display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px;
+  }
+  .hint svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Section label */
+  .section-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; padding: 0 4px; }
+
+  /* Transcript card */
+  .transcript-card { background: var(--surface); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+  .t-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 0.5px solid var(--border);
+  }
+  .t-toolbar span { font-size: 14px; font-weight: 500; }
+  .t-actions { display: flex; gap: 6px; }
+  .btn-tool {
+    width: 34px; height: 34px; border: none; background: none; color: var(--text-muted);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: background 0.12s; -webkit-tap-highlight-color: transparent;
+  }
+  .btn-tool:active { background: var(--bg); }
+  .btn-tool:disabled { opacity: 0.3; pointer-events: none; }
+  .btn-tool svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .t-body { padding: 14px 16px; min-height: 90px; }
+  .placeholder-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; color: var(--text-hint); }
+  .placeholder-empty svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .placeholder-empty p { font-size: 13px; }
+
+  .word-list { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    display: inline-flex; align-items: center; padding: 5px 11px;
+    border-radius: 20px; font-size: 14px; border: 0.5px solid var(--border);
+    background: var(--bg); color: var(--text); position: relative;
+    cursor: default; transition: background 0.12s;
+  }
+  .chip.corrected { background: var(--green-light); color: var(--green-dark); border-color: var(--green); }
+  .chip.error { background: var(--red-light); color: var(--red); border-color: var(--red); }
+
+  /* Stats */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat-box {
+    background: var(--surface); border-radius: var(--radius-sm);
+    padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .stat-val { font-size: 22px; font-weight: 500; }
+  .stat-lbl { font-size: 10px; color: var(--text-muted); text-align: center; }
+
+  /* Legend */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; padding: 0 4px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Action buttons */
+  .btn-action {
+    width: 100%; padding: 14px; border-radius: var(--radius-sm);
+    border: 0.5px solid var(--border); background: var(--surface);
+    color: var(--text); font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    transition: background 0.12s; margin-bottom: 10px;
+    -webkit-tap-highlight-color: transparent; text-align: left;
+  }
+  .btn-action:active { background: var(--bg); }
+  .btn-action:disabled { opacity: 0.4; pointer-events: none; }
+  .btn-action svg { width: 18px; height: 18px; fill: none; stroke: var(--purple); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .btn-action span { flex: 1; }
+  .btn-action .arrow { color: var(--text-hint); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </div>
+    <div class="header-text">
+      <h1>VozTexto</h1>
+      <p>Transcrição com correção ortográfica</p>
+    </div>
+  </div>
+
+  <div class="scroll">
+
+    <div class="record-card">
+      <div class="waveform" id="waveform"></div>
+      <div class="timer" id="timer">00:00</div>
+      <div class="controls">
+        <button class="btn-round" id="btnClear" disabled title="Limpar">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+        <button class="btn-record" id="btnRecord" title="Gravar">
+          <svg id="btnIcon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button class="btn-round" id="btnReanalyze" disabled title="Reanalisar">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+      </div>
+      <div><span class="badge" id="statusBadge">Toque para gravar</span></div>
+    </div>
+
+    <div class="hint">
+      <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      <span>Use o <strong>Safari</strong> no iPhone. Conceda permissão de microfone quando solicitado. Fale claramente a ~20 cm do aparelho.</span>
+    </div>
+
+    <div class="section-label">Transcrição palavra a palavra</div>
+    <div class="transcript-card">
+      <div class="t-toolbar">
+        <span>Palavras detectadas</span>
+        <div class="t-actions">
+          <button class="btn-tool" id="btnCopy" disabled title="Copiar">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <button class="btn-tool" id="btnShare" disabled title="Compartilhar">
+            <svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="t-body">
+        <div class="placeholder-empty" id="placeholder">
+          <svg viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          <p>A transcrição aparecerá aqui</p>
+        </div>
+        <div class="word-list" id="wordList" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="stats-row" id="statsRow" style="display:none">
+      <div class="stat-box"><div class="stat-val" id="statWords">0</div><div class="stat-lbl">Palavras</div></div>
+      <div class="stat-box"><div class="stat-val" id="statCorrections">0</div><div class="stat-lbl">Correções</div></div>
+      <div class="stat-box"><div class="stat-val" id="statAccuracy">—</div><div class="stat-lbl">Precisão</div></div>
+    </div>
+
+    <div class="legend" id="legendRow" style="display:none">
+      <div class="legend-item"><div class="dot" style="background:var(--gray)"></div> Original correto</div>
+      <div class="legend-item"><div class="dot" style="background:var(--green)"></div> Corrigido pela IA</div>
+      <div class="legend-item"><div class="dot" style="background:var(--red)"></div> Verificar manualmente</div>
+    </div>
+
+    <div class="section-label">Ações com IA</div>
+
+    <button class="btn-action" id="btnImprove" disabled>
+      <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <span>Melhorar e reescrever o texto</span>
+      <span class="arrow">›</span>
+    </button>
+
+    <button class="btn-action" id="btnAnalyze" disabled>
+      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <span>Ver análise detalhada das correções</span>
+      <span class="arrow">›</span>
+    </button>
+
+    <button class="btn-action" id="btnSummarize" disabled>
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span>Resumir o conteúdo falado</span>
+      <span class="arrow">›</span>
+    </button>
+
+  </div>
+</div>
+
+<script>
+const BARS = 30;
+const waveformEl = document.getElementById('waveform');
+const barsEls = [];
+for (let i = 0; i < BARS; i++) {
+  const b = document.createElement('div');
+  b.className = 'bar';
+  b.style.height = (4 + Math.random() * 10) + 'px';
+  waveformEl.appendChild(b);
+  barsEls.push(b);
+}
+
+let isRecording = false, elapsed = 0, timerInterval = null, animFrame = null;
+let recognition = null, liveText = '', currentWords = [], currentTranscript = '';
+
+const timerEl = document.getElementById('timer');
+const statusBadge = document.getElementById('statusBadge');
+const placeholder = document.getElementById('placeholder');
+const wordListEl = document.getElementById('wordList');
+const statsRow = document.getElementById('statsRow');
+const legendRow = document.getElementById('legendRow');
+const btnRecord = document.getElementById('btnRecord');
+const btnIcon = document.getElementById('btnIcon');
+const btnClear = document.getElementById('btnClear');
+const btnReanalyze = document.getElementById('btnReanalyze');
+const btnCopy = document.getElementById('btnCopy');
+const btnShare = document.getElementById('btnShare');
+const btnImprove = document.getElementById('btnImprove');
+const btnAnalyze = document.getElementById('btnAnalyze');
+const btnSummarize = document.getElementById('btnSummarize');
+
+function fmt(s) { return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+
+function setStatus(text, cls) {
+  statusBadge.textContent = text;
+  statusBadge.className = 'badge' + (cls ? ' '+cls : '');
+}
+
+function animBars(on) {
+  cancelAnimationFrame(animFrame);
+  if (!on) { barsEls.forEach(b => { b.className='bar'; b.style.height=(4+Math.random()*10)+'px'; }); return; }
+  function f() { barsEls.forEach(b => { b.className='bar active'; b.style.height=(6+Math.random()*42)+'px'; }); animFrame=requestAnimationFrame(f); }
+  f();
+}
+
+function setIconMic() {
+  btnIcon.innerHTML = '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>';
+}
+function setIconStop() {
+  btnIcon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+}
+
+function startRec() {
+  liveText = ''; isRecording = true; elapsed = 0;
+  timerEl.className = 'timer rec';
+  timerInterval = setInterval(() => { elapsed++; timerEl.textContent = fmt(elapsed); }, 1000);
+  animBars(true);
+  btnRecord.classList.add('rec');
+  setIconStop();
+  setStatus('Gravando…', 'rec');
+  placeholder.style.display = 'none';
+  wordListEl.style.display = 'flex';
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showLive('Reconhecimento de voz não suportado. Use o Safari no iPhone.'); return; }
+  recognition = new SR();
+  recognition.lang = 'pt-BR';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.onresult = e => {
+    let fin = '', int = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) fin += t + ' '; else int += t;
+    }
+    if (fin) liveText += fin;
+    showLive(liveText + int);
+  };
+  recognition.onerror = e => { if (e.error !== 'aborted') setStatus('Erro: '+e.error, ''); };
+  recognition.start();
+}
+
+function stopRec() {
+  isRecording = false;
+  clearInterval(timerInterval);
+  animBars(false);
+  timerEl.className = 'timer';
+  btnRecord.classList.remove('rec');
+  setIconMic();
+  if (recognition) { recognition.stop(); recognition = null; }
+  const txt = liveText.trim();
+  if (txt) { currentTranscript = txt; processText(txt); }
+  else { setStatus('Toque para gravar', ''); placeholder.style.display='flex'; wordListEl.style.display='none'; }
+}
+
+function showLive(text) {
+  wordListEl.innerHTML = '';
+  text.trim().split(/\s+/).filter(Boolean).forEach(w => {
+    const c = document.createElement('div');
+    c.className = 'chip'; c.textContent = w;
+    wordListEl.appendChild(c);
+  });
+}
+
+async function processText(text) {
+  setStatus('Analisando com IA…', 'processing');
+  btnRecord.disabled = true;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Analise este texto transcrito por reconhecimento de voz em português brasileiro.
+Retorne SOMENTE JSON válido, sem texto extra, sem backticks markdown.
+
+Texto: "${text}"
+
+Formato exato:
+{"words":[{"original":"palavra","corrected":"palavra_corrigida","status":"correct|corrected|error","note":"observação em pt-BR ou vazio"}],"stats":{"total":0,"corrections":0,"errors":0}}
+
+Regras:
+- correct: palavra está correta
+- corrected: havia erro e você corrigiu
+- error: ambígua ou não reconhecida
+- note: max 50 chars em português`
+        }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content.filter(c=>c.type==='text').map(c=>c.text).join('').replace(/```[a-z]*/g,'').replace(/```/g,'').trim();
+    const parsed = JSON.parse(raw);
+    currentWords = parsed.words;
+    renderWords(parsed.words);
+    renderStats(parsed.stats);
+    setStatus('Transcrição concluída ✓', 'done');
+    btnRecord.disabled = false;
+    [btnClear, btnReanalyze, btnCopy, btnShare, btnImprove, btnAnalyze, btnSummarize].forEach(b => b.disabled = false);
+  } catch(e) {
+    setStatus('Erro na análise', '');
+    btnRecord.disabled = false;
+    showLive(text);
+  }
+}
+
+function renderWords(words) {
+  wordListEl.innerHTML = '';
+  words.forEach(w => {
+    const c = document.createElement('div');
+    c.className = 'chip ' + w.status;
+    c.textContent = w.status === 'corrected' ? w.corrected : w.original;
+    if (w.status === 'corrected' && w.original) c.title = 'Original: ' + w.original + (w.note ? ' — ' + w.note : '');
+    wordListEl.appendChild(c);
+  });
+  statsRow.style.display = 'grid';
+  legendRow.style.display = 'flex';
+}
+
+function renderStats(stats) {
+  document.getElementById('statWords').textContent = stats.total;
+  document.getElementById('statCorrections').textContent = stats.corrections;
+  const acc = stats.total > 0 ? Math.round(((stats.total - stats.errors) / stats.total) * 100) : 100;
+  document.getElementById('statAccuracy').textContent = acc + '%';
+}
+
+btnRecord.addEventListener('click', () => { if (isRecording) stopRec(); else startRec(); });
+
+btnClear.addEventListener('click', () => {
+  currentWords = []; currentTranscript = ''; liveText = '';
+  placeholder.style.display = 'flex'; wordListEl.style.display = 'none'; wordListEl.innerHTML = '';
+  statsRow.style.display = 'none'; legendRow.style.display = 'none';
+  timerEl.textContent = '00:00'; timerEl.className = 'timer';
+  setStatus('Toque para gravar', '');
+  [btnClear, btnReanalyze, btnCopy, btnShare, btnImprove, btnAnalyze, btnSummarize].forEach(b => b.disabled = true);
+});
+
+btnReanalyze.addEventListener('click', () => { if (currentTranscript) processText(currentTranscript); });
+
+btnCopy.addEventListener('click', () => {
+  const text = currentWords.map(w => w.status === 'corrected' ? w.corrected : w.original).join(' ');
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  setStatus('Copiado! ✓', 'done');
+  setTimeout(() => setStatus('Transcrição concluída ✓', 'done'), 1500);
+});
+
+btnShare.addEventListener('click', () => {
+  const text = currentWords.map(w => w.status === 'corrected' ? w.corrected : w.original).join(' ');
+  if (navigator.share) navigator.share({ title: 'Transcrição VozTexto', text });
+  else { navigator.clipboard.writeText(text); setStatus('Copiado para área de transferência', 'done'); }
+});
+
+btnImprove.addEventListener('click', () => {
+  const text = currentWords.map(w => w.status === 'corrected' ? w.corrected : w.original).join(' ');
+  alert('Texto para melhorar:\n\n' + text + '\n\nAbra o Claude.ai e cole este texto pedindo para melhorá-lo.');
+});
+
+btnAnalyze.addEventListener('click', () => {
+  const corrections = currentWords.filter(w => w.status !== 'correct');
+  if (!corrections.length) { alert('Nenhuma correção necessária! O texto estava perfeito.'); return; }
+  const list = corrections.map(w => `• "${w.original}" → "${w.corrected}"` + (w.note ? `\n  ${w.note}` : '')).join('\n\n');
+  alert('Correções realizadas:\n\n' + list);
+});
+
+btnSummarize.addEventListener('click', () => {
+  const text = currentWords.map(w => w.status === 'corrected' ? w.corrected : w.original).join(' ');
+  alert('Texto transcrito:\n\n' + text);
+});
+</script>
+</body>
+</html>
